@@ -9,8 +9,8 @@ from sqlalchemy import text
 from app import models  # noqa: F401  (register tables)
 from app.config import settings
 from app.db import Base, SessionLocal, engine
-from app.routers import datasets, dev, prediction, reports, response, stations
-from app.services import thaiwater
+from app.routers import compensation, datasets, dev, prediction, reports, response, stations
+from app.services import rates, thaiwater
 
 log = logging.getLogger("cfm")
 SYNC_EVERY_S = 15 * 60
@@ -37,8 +37,11 @@ async def lifespan(_: FastAPI):
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
-        for col, typ in models.STATION_EXTRA_COLUMNS.items():
-            conn.execute(text(f"ALTER TABLE stations ADD COLUMN IF NOT EXISTS {col} {typ}"))
+        for table, cols in models.EXTRA_COLUMNS.items():
+            for col, typ in cols.items():
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typ}"))
+    with SessionLocal() as db:
+        rates.ensure_defaults(db)
     task = asyncio.create_task(_sync_loop())
     yield
     task.cancel()
@@ -56,6 +59,7 @@ app.add_middleware(
 app.include_router(datasets.router)
 app.include_router(stations.router)
 app.include_router(response.router)
+app.include_router(compensation.router)
 app.include_router(prediction.router)
 app.include_router(reports.router)
 app.include_router(dev.router)

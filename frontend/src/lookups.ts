@@ -29,12 +29,40 @@ export const INCIDENT_STATUS: Record<string, string> = {
 };
 
 export const DAMAGE_TYPE: Record<string, string> = {
-  crops: "Crops",
-  house: "House",
-  livestock: "Livestock",
-  fishery: "Fishery",
-  property: "Property",
+  rice: "Rice",
+  field_crop: "Field crops",
+  fruit_tree: "Fruit trees",
+  fish_pond: "Fish pond",
+  shrimp_pond: "Shrimp pond",
+  fish_cage: "Fish cages",
+  cattle: "Cattle",
+  buffalo: "Buffalo",
+  pig: "Pigs",
+  house: "House repair",
+  tools: "Tools",
+  // types used before the rate table
+  crops: "Crops", livestock: "Livestock", fishery: "Fishery", property: "Property",
 };
+
+export const UNIT: Record<string, { short: string; field: string | null }> = {
+  rai: { short: "rai", field: "Area (rai)" },
+  sq_m: { short: "m²", field: "Cage area (m²)" },
+  head: { short: "head", field: "Animals" },
+  house: { short: "house", field: null },
+  household: { short: "household", field: null },
+};
+
+export const CATEGORY: Record<string, string> = {
+  crops: "Crops", fishery: "Fishery", livestock: "Livestock", housing: "Housing and livelihood",
+};
+
+export const RISK: Record<string, { label: string; color: string; bg: string }> = {
+  ok: { label: "No issues", color: "#3f7a4c", bg: "#e4efe6" },
+  review: { label: "Review", color: "#8a5a00", bg: "#fbefd2" },
+  high: { label: "High risk", color: "#8d1f27", bg: "#f8e0e1" },
+};
+
+export const FLAG_COLOR: Record<string, string> = { high: "#b8323a", review: "#d39a12", info: "#8a9a9c" };
 
 export const CLAIM_FLOW = ["submitted", "surveyed", "approved", "paid"] as const;
 export const CLAIM_STATUS: Record<string, { label: string; color: string; next?: string; action?: string }> = {
@@ -60,3 +88,9 @@ export const ago = (iso: string) => {
 
 export const fmtTime = (t: string) =>
   new Date(t).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+export const fmtDate = (t: string) =>
+  new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+export const qty = (n: number | null | undefined) =>
+  n == null ? "–" : Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 1 });

@@ -6,7 +6,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://cfm:cfm@localhost:5432/cfm"
     cors_origins: str = "http://localhost:5173"
-    project_name: str = "CFM DSS"
+    project_name: str = "Chao Phraya Flood DSS"
+    upload_dir: str = "uploads"  # claim photos; mounted as a volume in Docker
+    max_photo_mb: int = 20
 
     @property
     def cors_list(self) -> list[str]:

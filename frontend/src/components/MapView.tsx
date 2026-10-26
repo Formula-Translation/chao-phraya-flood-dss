@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import type { Incident, Station } from "../api";
 import { NO_DATA_COLOR, SEVERITY, SITUATION } from "../lookups";
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
+const TOKEN: string = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
+const HAS_TOKEN = TOKEN.startsWith("pk.") && !TOKEN.includes("your_mapbox_token");
+mapboxgl.accessToken = TOKEN;
 
 export const HEIGHT_COLORS = ["#c9dbd6", "#8fb4ad", "#4f8a86", "#24605f"];
 
@@ -18,27 +20,41 @@ interface Props {
   /** when set, the next map click places a point */
   onPick?: ((lon: number, lat: number) => void) | null;
   pickPoint?: [number, number] | null;
+  /** photo locations for the selected claim */
+  photoPoints?: PhotoPoint[];
 }
+
+export interface PhotoPoint { id: number; lon: number; lat: number; label: string; flagged: boolean }
 
 const fc = (features: GeoJSON.Feature[] = []): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
 
 export default function MapView(props: Props) {
-  const { stations, selectedStation, incidents, showIncidents, selectedIncident, onPick, pickPoint } = props;
+  const { stations, selectedStation, incidents, showIncidents, selectedIncident, onPick, pickPoint, photoPoints } = props;
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const loaded = useRef(false);
   const handlers = useRef(props);
   handlers.current = props;
   const pickMarker = useRef<mapboxgl.Marker | null>(null);
+  const [failed, setFailed] = useState<string | null>(HAS_TOKEN ? null : "token");
 
   // ---------- create map once ----------
   useEffect(() => {
-    if (!container.current || map.current) return;
-    const m = new mapboxgl.Map({
-      container: container.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [100.2, 15.6],
-      zoom: 7.4,
+    if (!container.current || map.current || !HAS_TOKEN) return;
+    let m: mapboxgl.Map;
+    try {
+      m = new mapboxgl.Map({
+        container: container.current,
+        style: "mapbox://styles/mapbox/light-v11",
+        center: [100.2, 15.6],
+        zoom: 7.4,
+      });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : "map");
+      return;
+    }
+    m.on("error", (e) => {
+      if ((e.error as { status?: number } | undefined)?.status === 401) setFailed("token");
     });
     map.current = m;
     m.addControl(new mapboxgl.NavigationControl(), "top-right");
@@ -100,7 +116,28 @@ export default function MapView(props: Props) {
         },
       });
 
-      for (const layer of ["stations", "incidents"]) {
+      m.addSource("photos", { type: "geojson", data: fc() });
+      m.addLayer({
+        id: "photo-links",
+        type: "line",
+        source: "photos",
+        filter: ["==", ["geometry-type"], "LineString"],
+        paint: { "line-color": ["get", "color"], "line-width": 1.5, "line-dasharray": [2, 2], "line-opacity": 0.8 },
+      });
+      m.addLayer({
+        id: "photos",
+        type: "circle",
+        source: "photos",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#ffffff",
+          "circle-stroke-color": ["get", "color"],
+          "circle-stroke-width": 3,
+        },
+      });
+
+      for (const layer of ["stations", "incidents", "photos"]) {
         m.on("mouseenter", layer, (e) => {
           m.getCanvas().style.cursor = "pointer";
           const f = e.features?.[0];
@@ -203,6 +240,37 @@ export default function MapView(props: Props) {
       map.current?.flyTo({ center: [i.lon, i.lat], zoom: 12, pitch: 40, duration: 1200 });
   }, [selectedIncident, showIncidents]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---------- photo locations, linked to the incident ----------
+  useEffect(() => {
+    whenReady((m) => {
+      const pts = photoPoints ?? [];
+      const inc = incidents.find((x) => x.id === selectedIncident);
+      const features: GeoJSON.Feature[] = [];
+      for (const p of pts) {
+        const color = p.flagged ? "#b8323a" : "#17323a";
+        if (inc?.lon != null && inc.lat != null) {
+          features.push({
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: [[inc.lon, inc.lat], [p.lon, p.lat]] },
+            properties: { color },
+          });
+        }
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+          properties: { id: p.id, color, tip: p.label },
+        });
+      }
+      (m.getSource("photos") as mapboxgl.GeoJSONSource).setData(fc(features));
+      if (pts.length) {
+        const b = new mapboxgl.LngLatBounds();
+        pts.forEach((p) => b.extend([p.lon, p.lat]));
+        if (inc?.lon != null && inc.lat != null) b.extend([inc.lon, inc.lat]);
+        m.fitBounds(b, { padding: 90, maxZoom: 13.5, duration: 1000 });
+      }
+    });
+  }, [photoPoints]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---------- pick mode ----------
   useEffect(() => {
     const m = map.current;
@@ -220,5 +288,19 @@ export default function MapView(props: Props) {
     }
   }, [pickPoint]);
 
+  if (failed) {
+    return (
+      <div className="map map-missing">
+        <div>
+          <b>The map can't load</b>
+          {failed === "token" ? (
+            <p>Add your Mapbox token to <code>.env</code> as <code>VITE_MAPBOX_TOKEN=pk…</code>, then restart the frontend. Everything else works without it.</p>
+          ) : (
+            <p>{failed}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
   return <div ref={container} className="map" />;
 }

@@ -73,9 +73,10 @@ def list_claims(incident_id: int | None = None, db: Session = Depends(get_db)):
 
 @router.post("/claims", response_model=schemas.ClaimOut, status_code=201)
 def create_claim(body: schemas.ClaimIn, db: Session = Depends(get_db)):
-    if not db.get(I, body.incident_id):
+    inc = db.get(I, body.incident_id)
+    if not inc:
         raise HTTPException(404, "Incident not found")
-    claim = C(**body.model_dump())
+    claim = C(**body.model_dump(), province=inc.province, amphoe=inc.amphoe)
     db.add(claim)
     db.commit()
     db.refresh(claim)

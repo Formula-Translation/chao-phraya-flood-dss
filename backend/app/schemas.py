@@ -138,8 +138,9 @@ class ClaimIn(BaseModel):
     incident_id: int
     claimant: str
     village: str | None = None
-    damage_type: str = "crops"
+    damage_type: str = "rice"
     area_rai: float | None = None
+    units: float | None = None
     estimated_thb: float = 0
     notes: str | None = None
 
@@ -155,10 +156,92 @@ class ClaimOut(ORM):
     incident_id: int
     claimant: str
     village: str | None
+    province: str | None = None
+    amphoe: str | None = None
     damage_type: str
     area_rai: float | None
+    units: float | None = None
     estimated_thb: float
     approved_thb: float | None
     status: str
     notes: str | None
     submitted_at: datetime
+
+
+class RateIn(BaseModel):
+    damage_type: str
+    province: str | None = None
+    rate_thb: float | None = None
+    max_units: float | None = None
+    max_thb: float | None = None
+    source: str | None = None
+
+
+class RatePatch(BaseModel):
+    rate_thb: float | None = None
+    max_units: float | None = None
+    max_thb: float | None = None
+    source: str | None = None
+
+
+class RateOut(ORM):
+    id: int
+    damage_type: str
+    province: str | None
+    label: str
+    category: str
+    unit: str
+    rate_thb: float | None
+    max_units: float | None
+    max_thb: float | None
+    source: str | None
+    effective_from: datetime | None
+
+
+class PhotoOut(ORM):
+    id: int
+    claim_id: int
+    filename: str
+    content_type: str | None
+    size_bytes: int
+    width: int | None
+    height: int | None
+    taken_at: datetime | None
+    lat: float | None
+    lon: float | None
+    camera: str | None
+    uploaded_at: datetime
+    url: str = ""
+    thumb_url: str = ""
+    distance_km: float | None = None  # from the incident location
+
+
+class FlagOut(BaseModel):
+    code: str
+    level: str  # info | review | high
+    title: str
+    detail: str
+    photo_id: int | None = None
+
+
+class AssessmentSummary(BaseModel):
+    claim_id: int
+    level: str  # ok | review | high
+    score: int
+    flags: int
+    top_flag: str | None
+
+
+class Assessment(AssessmentSummary):
+    flag_list: list[FlagOut]
+    rate: RateOut | None
+    rate_region: str | None  # "national" or the province of an override
+    quantity: float | None
+    eligible_quantity: float | None
+    official_max_thb: float | None
+    peer_group: str | None
+    peer_count: int
+    peer_median: float | None  # per unit (or per claim for lump-sum types)
+    expected_low_thb: float | None
+    expected_mid_thb: float | None
+    expected_high_thb: float | None
