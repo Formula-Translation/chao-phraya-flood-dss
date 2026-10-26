@@ -60,40 +60,15 @@ def seed(db: Session = Depends(get_db)):
 
 
 @router.post("/seed-response")
-def seed_response(db: Session = Depends(get_db)):
-    """Sample incidents and compensation claims so the Incident and Compensation tabs have content."""
-    if db.scalar(select(models.Incident).limit(1)):
-        return {"status": "already seeded"}
-    now = datetime.now(timezone.utc)
-    incs = [
-        models.Incident(title="Bank overflow at Chai Nat town", kind="overflow", severity=3, status="active",
-                        province="ชัยนาท", amphoe="เมืองชัยนาท", households_affected=420, area_rai=3100,
-                        description="River above right bank near the Chai Nat dam; sandbag line along the market road.",
-                        geom=from_shape(Point(100.1270, 15.1850), 4326), started_at=now - timedelta(days=2)),
-        models.Incident(title="Paddy inundation, Phayuha Khiri", kind="inundation", severity=2, status="active",
-                        province="นครสวรรค์", amphoe="พยุหะคีรี", households_affected=150, area_rai=5200,
-                        description="Low-lying rice fields flooded after the third rain event this week.",
-                        geom=from_shape(Point(100.1360, 15.4560), 4326), started_at=now - timedelta(days=4)),
-        models.Incident(title="Embankment seep, Mueang Nakhon Sawan", kind="breach", severity=1, status="receding",
-                        province="นครสวรรค์", amphoe="เมืองนครสวรรค์", households_affected=35, area_rai=180,
-                        description="Seepage under the flood wall at Pak Nam Pho; pumps running.",
-                        geom=from_shape(Point(100.1300, 15.7000), 4326), started_at=now - timedelta(days=9)),
-    ]
-    db.add_all(incs)
-    db.flush()
-    statuses = ["submitted", "surveyed", "approved", "paid", "submitted", "surveyed", "approved", "rejected"]
-    types = ["crops", "house", "crops", "livestock", "crops", "house", "fishery", "crops"]
-    n = 0
-    for inc in incs:
-        for i in range(8 if inc.severity > 1 else 3):
-            st = statuses[(i + inc.id) % len(statuses)]
-            est = round(4000 + ((i * 7919 + inc.id * 104729) % 46000), -2)
-            db.add(models.CompensationClaim(
-                incident_id=inc.id, claimant=f"Household {inc.id:02d}-{i + 1:03d}", village=f"หมู่ {i % 9 + 1}",
-                damage_type=types[i % len(types)], area_rai=round(2 + (i * 3.7) % 25, 1), estimated_thb=est,
-                approved_thb=round(est * 0.85, -2) if st in ("approved", "paid") else None, status=st,
-                submitted_at=inc.started_at + timedelta(hours=6 + i * 5),
-            ))
-            n += 1
-    db.commit()
-    return {"status": "seeded", "incidents": len(incs), "claims": n}
+def seed_response(reset: bool = False, db: Session = Depends(get_db)):
+    """Sample incidents, compensation claims and photos for the Incident and Compensation tabs.
+
+    reset=true deletes ALL incidents, claims and photos first (development only).
+    """
+    from app.services import sample_data
+
+    if reset:
+        sample_data.reset(db)
+    elif db.scalar(select(models.Incident).limit(1)):
+        return {"status": "already seeded", "hint": "POST /api/dev/seed-response?reset=true to replace with fresh samples"}
+    return sample_data.seed(db)

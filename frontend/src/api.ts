@@ -40,12 +40,39 @@ export interface Incident {
 export type IncidentInput = Partial<Omit<Incident, "id" | "claims" | "started_at" | "ended_at">> & { title: string };
 
 export interface Claim {
-  id: number; incident_id: number; claimant: string; village: string | null; damage_type: string;
-  area_rai: number | null; estimated_thb: number; approved_thb: number | null; status: string;
+  id: number; incident_id: number; claimant: string; village: string | null;
+  province: string | null; amphoe: string | null; damage_type: string;
+  area_rai: number | null; units: number | null; estimated_thb: number; approved_thb: number | null; status: string;
   notes: string | null; submitted_at: string;
 }
 export type ClaimInput = Pick<Claim, "incident_id" | "claimant" | "damage_type" | "estimated_thb"> &
-  Partial<Pick<Claim, "village" | "area_rai" | "notes">>;
+  Partial<Pick<Claim, "village" | "area_rai" | "units" | "notes">>;
+
+export interface Rate {
+  id: number; damage_type: string; province: string | null; label: string; category: string; unit: string;
+  rate_thb: number | null; max_units: number | null; max_thb: number | null; source: string | null;
+  effective_from: string | null;
+}
+
+export interface Flag { code: string; level: "info" | "review" | "high"; title: string; detail: string; photo_id: number | null }
+
+export interface AssessmentSummary { claim_id: number; level: "ok" | "review" | "high"; score: number; flags: number; top_flag: string | null }
+
+export interface Assessment extends AssessmentSummary {
+  flag_list: Flag[];
+  rate: Rate | null; rate_region: string | null;
+  quantity: number | null; eligible_quantity: number | null; official_max_thb: number | null;
+  peer_group: string | null; peer_count: number; peer_median: number | null;
+  expected_low_thb: number | null; expected_mid_thb: number | null; expected_high_thb: number | null;
+}
+
+export interface Photo {
+  id: number; claim_id: number; filename: string; content_type: string | null; size_bytes: number;
+  width: number | null; height: number | null; taken_at: string | null; lat: number | null; lon: number | null;
+  camera: string | null; uploaded_at: string; url: string; thumb_url: string; distance_km: number | null;
+}
+
+export const fileUrl = (path: string) => `${BASE}${path}`;
 
 export interface CompensationSummary {
   by_status: Record<string, { count: number; estimated_thb: number; approved_thb: number }>;
@@ -72,6 +99,26 @@ export const api = {
   createClaim: (body: ClaimInput) => http<Claim>("/api/claims", post(body)),
   updateClaim: (id: number, body: Partial<Claim>) => http<Claim>(`/api/claims/${id}`, patch(body)),
   compensationSummary: () => http<CompensationSummary>("/api/compensation/summary"),
+
+  assessments: () => http<AssessmentSummary[]>("/api/compensation/assessments"),
+  assessment: (claimId: number) => http<Assessment>(`/api/claims/${claimId}/assessment`),
+
+  rates: () => http<Rate[]>("/api/compensation/rates"),
+  addRateOverride: (body: { damage_type: string; province: string; rate_thb?: number | null; max_units?: number | null; max_thb?: number | null }) =>
+    http<Rate>("/api/compensation/rates", post(body)),
+  updateRate: (id: number, body: Partial<Pick<Rate, "rate_thb" | "max_units" | "max_thb" | "source">>) =>
+    http<Rate>(`/api/compensation/rates/${id}`, patch(body)),
+  deleteRate: (id: number) => fetch(`${BASE}/api/compensation/rates/${id}`, { method: "DELETE" }),
+
+  photos: (claimId: number) => http<Photo[]>(`/api/claims/${claimId}/photos`),
+  uploadPhotos: async (claimId: number, files: File[]) => {
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    const res = await fetch(`${BASE}/api/claims/${claimId}/photos`, { method: "POST", body: form });
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? `Upload failed (${res.status})`);
+    return (await res.json()) as Photo[];
+  },
+  deletePhoto: (id: number) => fetch(`${BASE}/api/photos/${id}`, { method: "DELETE" }),
 
   seedResponse: () => http<unknown>("/api/dev/seed-response", post()),
 };

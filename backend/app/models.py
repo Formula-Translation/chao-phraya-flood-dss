@@ -187,11 +187,67 @@ class CompensationClaim(Base):
     incident_id: Mapped[int] = mapped_column(ForeignKey("incidents.id", ondelete="CASCADE"), index=True)
     claimant: Mapped[str] = mapped_column(String(200))
     village: Mapped[str | None] = mapped_column(String(200))
-    damage_type: Mapped[str] = mapped_column(String(50), default="crops")  # crops | house | livestock | fishery | property
-    area_rai: Mapped[float | None] = mapped_column(Float)
+    province: Mapped[str | None] = mapped_column(String(200))  # region used for peer comparison
+    amphoe: Mapped[str | None] = mapped_column(String(200))
+    # key into compensation_rates, e.g. rice | field_crop | fruit_tree | fish_pond | cattle | house
+    damage_type: Mapped[str] = mapped_column(String(50), default="rice")
+    area_rai: Mapped[float | None] = mapped_column(Float)  # for per-rai damage types
+    units: Mapped[float | None] = mapped_column(Float)  # heads, m² of cages, houses… for other types
     estimated_thb: Mapped[float] = mapped_column(Float, default=0)
     approved_thb: Mapped[float | None] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(20), default="submitted")  # submitted | surveyed | approved | paid | rejected
     geom = mapped_column(Geometry("POINT", srid=4326))
     notes: Mapped[str | None] = mapped_column(Text)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CompensationRate(Base):
+    """Official assistance rate for one damage type.
+
+    province = NULL is the national rate; a row with a province overrides it for that region.
+    """
+    __tablename__ = "compensation_rates"
+    __table_args__ = (Index("ux_rate_type_province", "damage_type", "province", unique=True),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    damage_type: Mapped[str] = mapped_column(String(50))
+    province: Mapped[str | None] = mapped_column(String(200))
+    label: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(50))  # crops | fishery | livestock | housing
+    unit: Mapped[str] = mapped_column(String(20))  # rai | sq_m | head | house | household
+    rate_thb: Mapped[float | None] = mapped_column(Float)  # per unit; NULL for lump-sum types
+    max_units: Mapped[float | None] = mapped_column(Float)  # household cap on units
+    max_thb: Mapped[float | None] = mapped_column(Float)  # cap on the amount
+    source: Mapped[str | None] = mapped_column(Text)
+    effective_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ClaimPhoto(Base):
+    """Photo evidence for a claim, with metadata read from the file's EXIF."""
+    __tablename__ = "claim_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("compensation_claims.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str] = mapped_column(String(300))  # original name from the uploader
+    stored_name: Mapped[str] = mapped_column(String(100))  # <uuid> — files: <uuid>.<ext>, <uuid>.jpg, thumbs/<uuid>.jpg
+    original_ext: Mapped[str] = mapped_column(String(10))
+    content_type: Mapped[str | None] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    camera: Mapped[str | None] = mapped_column(String(200))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# Columns added after a table first shipped. Created on startup if missing (until Alembic is set up).
+EXTRA_COLUMNS = {
+    "stations": STATION_EXTRA_COLUMNS,
+    "compensation_claims": {
+        "province": "VARCHAR(200)", "amphoe": "VARCHAR(200)", "units": "DOUBLE PRECISION",
+    },
+}

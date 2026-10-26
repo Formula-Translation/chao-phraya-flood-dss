@@ -6,7 +6,7 @@ A flood decision support system for the Chao Phraya basin. It follows a flood th
 |---|---|---|
 | Before | **Prediction** | Live water levels from 800+ telemetry stations, 7-day history, distance to bank, and a 48-hour forecast with low, expected and high cases |
 | During | **Incident** | Record and track flood events on the map: severity, households affected, area flooded, status |
-| After | **Compensation** | Process household damage claims from submission through survey, approval and payment |
+| After | **Compensation** | Process household damage claims from submission to payment, with automatic outlier checks against official rates, regional peers and photo evidence |
 
 ## Architecture
 
@@ -36,6 +36,28 @@ Every dataset has a `series_type`:
 | `raster` | Gridded frames over time (radar, flood depth) stored as COG / file URIs | `raster_frames` |
 
 Forecasts are stored per scenario (`scenarios`, `scenario_results`). Incidents and claims live in `incidents` and `compensation_claims`.
+
+## Compensation outlier checks
+
+Every claim gets a level (no issues, review, high risk), a 0–100 score and plain-language reasons.
+
+| Check | What it flags |
+|---|---|
+| Official rate | Amount above rate × area (for example 2,240 ฿/rai for rice), above a lump-sum cap such as house repair, or area above the household limit (30 rai for crops) |
+| Regional peers | Amount per rai, head or m² far above claims for the same damage type in the same province, using a median/MAD modified z-score. Falls back to all provinces when a province has fewer than 5 claims |
+| Expected amount | The typical range for the claim, from the regional interquartile range × eligible area, capped at the official maximum |
+| Duplicates | The same claimant twice in one incident (Thai titles such as นาย/นาง are ignored when matching) |
+| Photo evidence | No photos on a larger claim, the same photo on two claims (SHA-256), GPS position far from the incident, or a photo dated before the flood. EXIF is read on the server |
+
+Rates live in the `compensation_rates` table and can be edited, or overridden per province, from the **Rates** view. Defaults follow the MOAC farmer assistance criteria effective 21 Aug 2026 (2569) and the MOF 2025 (2568) advance-fund regulation. Check them against the official announcement before using them for payments.
+
+Photos are stored in the `uploads` Docker volume (original, a 1600 px JPEG, and a thumbnail). JPEG, PNG and iPhone HEIC are accepted.
+
+Load sample claims with deliberate outliers (this replaces all incidents and claims):
+
+```bash
+curl -X POST "http://localhost:8000/api/dev/seed-response?reset=true"
+```
 
 ## Getting started
 
@@ -85,6 +107,11 @@ npm run dev
 | GET, POST, PATCH | `/api/incidents` | Flood incidents |
 | GET, POST, PATCH | `/api/claims` | Compensation claims |
 | GET | `/api/compensation/summary` | Totals by claim stage |
+| GET | `/api/compensation/assessments` | Outlier level and score for every claim |
+| GET | `/api/claims/{id}/assessment` | Full check for one claim: flags, expected range, official maximum |
+| GET, POST, PATCH, DELETE | `/api/compensation/rates` | Official rates and provincial overrides |
+| GET, POST | `/api/claims/{id}/photos` | List or upload photo evidence (multipart, field `files`) |
+| GET, DELETE | `/api/photos/{id}/file?size=thumb\|display\|original` | Photo files |
 
 ## Data sources
 
@@ -92,6 +119,7 @@ npm run dev
 |---|---|---|
 | Water levels, station metadata, bank levels | [ThaiWater](https://www.thaiwater.net) public API, Hydro-Informatics Institute ([HII](https://www.hii.or.th)) | Credit HII / ThaiWater |
 | Base map | [Mapbox](https://www.mapbox.com) Light style | Mapbox terms; free tier covers internal use |
+| Compensation rates | MOAC farmer disaster assistance criteria (2569), MOF advance-fund regulation (2568) | Official rates; verify before payment use |
 | Building footprints (LOD 1) | [OpenStreetMap](https://www.openstreetmap.org/copyright) via Mapbox Streets | ODbL, keep the map attribution |
 
 ## Project status

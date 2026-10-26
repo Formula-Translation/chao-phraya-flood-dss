@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Claim, type CompensationSummary, type Dataset, type Incident, type Station } from "./api";
-import MapView from "./components/MapView";
+import MapView, { type PhotoPoint } from "./components/MapView";
 import StationSearch from "./components/StationSearch";
 import { SEVERITY, SITUATION } from "./lookups";
 import PredictionTab from "./tabs/PredictionTab";
@@ -28,8 +28,14 @@ export default function App() {
   const [pick, setPick] = useState<Pick | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [photoPoints, setPhotoPoints] = useState<PhotoPoint[]>([]);
 
   const station = stations.find((s) => s.id === stationId);
+  const provinces = useMemo(
+    () => [...new Set([...incidents.map((i) => i.province), ...stations.map((s) => s.province)].filter(Boolean) as string[])]
+      .sort((a, b) => a.localeCompare(b, "th")),
+    [incidents, stations]
+  );
 
   const loadStations = useCallback(async () => {
     const [ds, st] = await Promise.all([api.datasets(), api.stations()]);
@@ -107,6 +113,7 @@ export default function App() {
             onSelectIncident={setIncidentId}
             onPick={pick?.onPick ?? null}
             pickPoint={pick?.point ?? null}
+            photoPoints={tab === "compensation" ? photoPoints : []}
           />
           <div className="map-legend">
             {tab === "prediction"
@@ -116,6 +123,9 @@ export default function App() {
               : Object.values(SEVERITY).map((s) => (
                   <span key={s.label}><i style={{ background: s.color }} />{s.label}</span>
                 ))}
+            {tab === "compensation" && photoPoints.length > 0 && (
+              <span><i className="ring" />Photo location</span>
+            )}
           </div>
           {pick && <div className="map-banner">Click the map to place the incident</div>}
         </div>
@@ -132,6 +142,7 @@ export default function App() {
         {tab === "compensation" && (
           <CompensationTab
             {...shared} error={error} selectedIncident={incidentId} onSelectIncident={setIncidentId} reload={loadResponse}
+            provinces={provinces} setPhotoPoints={setPhotoPoints}
           />
         )}
       </div>
